@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
 
 void main() async {
@@ -24,14 +25,32 @@ class _MyAppState extends State<MyApp> {
   bool isDarkMode = false;
 
   @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  void _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isDarkMode = prefs.getBool('darkMode') ?? false;
+    });
+  }
+
+  void _toggleTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isDarkMode = !isDarkMode;
+      prefs.setBool('darkMode', isDarkMode);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SQLite Enhanced',
       theme: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-      home: HomeScreen(
-        dbHelper: widget.dbHelper,
-        toggleTheme: () => setState(() => isDarkMode = !isDarkMode),
-      ),
+      home: HomeScreen(dbHelper: widget.dbHelper, toggleTheme: _toggleTheme),
     );
   }
 }
@@ -46,11 +65,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController();
-  final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _records = [];
-  String? _imageBase64;
+  bool _isSortedByName = true;
 
   @override
   void initState() {
@@ -61,130 +77,87 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refreshRecords() async {
     final data = await widget.dbHelper.queryAllRows();
     setState(() {
-      _records = data;
+      _records = _isSortedByName
+          ? (data..sort((a, b) => a['name'].compareTo(b['name'])))
+          : (data..sort((a, b) => a['age'].compareTo(b['age'])));
     });
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      final bytes = File(pickedFile.path).readAsBytesSync();
-      setState(() {
-        _imageBase64 = base64Encode(bytes);
-      });
-    }
-  }
-
-  void _addRecord() async {
-    if (_nameController.text.isEmpty || _ageController.text.isEmpty) {
-      Fluttertoast.showToast(msg: "Please fill in all fields");
-      return;
-    }
-    await widget.dbHelper.insert({
-      'name': _nameController.text,
-      'age': int.parse(_ageController.text),
-      'image': _imageBase64,
-    });
-    _nameController.clear();
-    _ageController.clear();
-    setState(() {
-      _imageBase64 = null;
-    });
+  void _updateRecord(int id, String name, int age) async {
+    await widget.dbHelper.update({'_id': id, 'name': name, 'age': age});
     _refreshRecords();
   }
 
   void _deleteRecord(int id) async {
     await widget.dbHelper.delete(id);
+    Fluttertoast.showToast(msg: "Record deleted");
     _refreshRecords();
   }
 
-  List<Map<String, dynamic>> _filteredRecords() {
-    if (_searchController.text.isEmpty) return _records;
-    return _records.where((record) {
-      return record['name']
-          .toString()
-          .toLowerCase()
-          .contains(_searchController.text.toLowerCase());
-    }).toList();
+  void _showUpdateDialog(Map<String, dynamic> record) {
+    final TextEditingController nameController =
+        TextEditingController(text: record['name']);
+    final TextEditingController ageController =
+        TextEditingController(text: record['age'].toString());
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Update Record"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameController, decoration: InputDecoration(labelText: "Name")),
+            TextField(controller: ageController, decoration: InputDecoration(labelText: "Age"), keyboardType: TextInputType.number),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              _updateRecord(record['_id'], nameController.text, int.parse(ageController.text));
+              Navigator.pop(context);
+            },
+            child: Text("Update"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('SQLite CRUD with Images & Search'),
+        title: Text('SQLite CRUD with Enhancements'),
         actions: [
+          IconButton(icon: Icon(Icons.brightness_6), onPressed: widget.toggleTheme),
           IconButton(
-            icon: Icon(Icons.brightness_6),
-            onPressed: widget.toggleTheme,
+            icon: Icon(Icons.sort),
+            onPressed: () {
+              setState(() {
+                _isSortedByName = !_isSortedByName;
+              });
+              _refreshRecords();
+            },
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(labelText: 'Name'),
+      body: ListView.builder(
+        itemCount: _records.length,
+        itemBuilder: (context, index) {
+          final record = _records[index];
+          return ListTile(
+            title: Text(record['name']),
+            subtitle: Text('Age: ${record['age']}'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(icon: Icon(Icons.edit), onPressed: () => _showUpdateDialog(record)),
+                IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteRecord(record['_id'])),
+              ],
             ),
-            TextField(
-              controller: _ageController,
-              decoration: InputDecoration(labelText: 'Age'),
-              keyboardType: TextInputType.number,
-            ),
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _pickImage,
-              child: Text("Pick Image"),
-            ),
-            if (_imageBase64 != null)
-              Image.memory(
-                base64Decode(_imageBase64!),
-                height: 100,
-                width: 100,
-              ),
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _addRecord,
-              child: Text('Add Record'),
-            ),
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Search by Name',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (value) => setState(() {}),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _filteredRecords().length,
-                itemBuilder: (context, index) {
-                  final record = _filteredRecords()[index];
-                  return Card(
-                    child: ListTile(
-                      leading: record['image'] != null
-                          ? Image.memory(
-                              base64Decode(record['image']),
-                              width: 50,
-                              height: 50,
-                            )
-                          : Icon(Icons.person),
-                      title: Text(record['name']),
-                      subtitle: Text('Age: ${record['age']}'),
-                      trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _deleteRecord(record['_id']),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

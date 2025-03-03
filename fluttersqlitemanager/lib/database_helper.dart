@@ -10,7 +10,7 @@ class DatabaseHelper {
   static const columnId = '_id';
   static const columnName = 'name';
   static const columnAge = 'age';
-  static const columnImage = 'image'; // Store image in base64 format
+  static const columnImage = 'image';
   late Database _db;
 
   Future<void> init() async {

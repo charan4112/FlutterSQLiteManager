@@ -1,5 +1,5 @@
 name: fluttersqlitemanager
-description: "A new Flutter project with SQLite database integration, image storage, and search functionality."
+description: "A Flutter app with SQLite integration, image storage, search, and CRUD operations."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -16,7 +16,8 @@ dependencies:
   path_provider: ^2.1.5
   image_picker: ^1.0.7
   fluttertoast: ^8.2.4
-
+  shared_preferences: ^2.2.2  # Persistent Dark Mode
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
