@@ -48,7 +48,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SQLite Enhanced',
+      title: 'Flutter SQLite Manager',
       theme: isDarkMode ? ThemeData.dark() : ThemeData.light(),
       home: HomeScreen(dbHelper: widget.dbHelper, toggleTheme: _toggleTheme),
     );
@@ -67,6 +67,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _records = [];
   bool _isSortedByName = true;
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -94,41 +95,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _refreshRecords();
   }
 
-  void _showUpdateDialog(Map<String, dynamic> record) {
-    final TextEditingController nameController =
-        TextEditingController(text: record['name']);
-    final TextEditingController ageController =
-        TextEditingController(text: record['age'].toString());
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Update Record"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: InputDecoration(labelText: "Name")),
-            TextField(controller: ageController, decoration: InputDecoration(labelText: "Age"), keyboardType: TextInputType.number),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              _updateRecord(record['_id'], nameController.text, int.parse(ageController.text));
-              Navigator.pop(context);
-            },
-            child: Text("Update"),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('SQLite CRUD with Enhancements'),
+        title: Text('SQLite Manager'),
         actions: [
           IconButton(icon: Icon(Icons.brightness_6), onPressed: widget.toggleTheme),
           IconButton(
@@ -142,22 +113,39 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: _records.length,
-        itemBuilder: (context, index) {
-          final record = _records[index];
-          return ListTile(
-            title: Text(record['name']),
-            subtitle: Text('Age: ${record['age']}'),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(icon: Icon(Icons.edit), onPressed: () => _showUpdateDialog(record)),
-                IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteRecord(record['_id'])),
-              ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Search by Name',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) => setState(() {}),
             ),
-          );
-        },
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _records.length,
+              itemBuilder: (context, index) {
+                final record = _records[index];
+                return ListTile(
+                  title: Text(record['name']),
+                  subtitle: Text('Age: ${record['age']}'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: Icon(Icons.edit), onPressed: () {}),
+                      IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteRecord(record['_id'])),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
