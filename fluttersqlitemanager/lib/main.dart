@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'database_helper.dart';
 
 void main() async {
@@ -8,23 +12,34 @@ void main() async {
   runApp(MyApp(dbHelper: dbHelper));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final DatabaseHelper dbHelper;
-  const MyApp({super.key, required this.dbHelper});
+  MyApp({required this.dbHelper});
+
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool isDarkMode = false;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter SQLite Demo',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: HomeScreen(dbHelper: dbHelper),
+      title: 'SQLite Enhanced',
+      theme: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+      home: HomeScreen(
+        dbHelper: widget.dbHelper,
+        toggleTheme: () => setState(() => isDarkMode = !isDarkMode),
+      ),
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
   final DatabaseHelper dbHelper;
-  const HomeScreen({super.key, required this.dbHelper});
+  final VoidCallback toggleTheme;
+  HomeScreen({required this.dbHelper, required this.toggleTheme});
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -33,7 +48,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _records = [];
+  String? _imageBase64;
 
   @override
   void initState() {
@@ -48,16 +65,33 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _addRecord() async {
-    if (_nameController.text.isNotEmpty && _ageController.text.isNotEmpty) {
-      await widget.dbHelper.insert({
-        'name': _nameController.text,
-        'age': int.parse(_ageController.text),
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      final bytes = File(pickedFile.path).readAsBytesSync();
+      setState(() {
+        _imageBase64 = base64Encode(bytes);
       });
-      _nameController.clear();
-      _ageController.clear();
-      _refreshRecords();
     }
+  }
+
+  void _addRecord() async {
+    if (_nameController.text.isEmpty || _ageController.text.isEmpty) {
+      Fluttertoast.showToast(msg: "Please fill in all fields");
+      return;
+    }
+    await widget.dbHelper.insert({
+      'name': _nameController.text,
+      'age': int.parse(_ageController.text),
+      'image': _imageBase64,
+    });
+    _nameController.clear();
+    _ageController.clear();
+    setState(() {
+      _imageBase64 = null;
+    });
+    _refreshRecords();
   }
 
   void _deleteRecord(int id) async {
@@ -65,10 +99,28 @@ class _HomeScreenState extends State<HomeScreen> {
     _refreshRecords();
   }
 
+  List<Map<String, dynamic>> _filteredRecords() {
+    if (_searchController.text.isEmpty) return _records;
+    return _records.where((record) {
+      return record['name']
+          .toString()
+          .toLowerCase()
+          .contains(_searchController.text.toLowerCase());
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('SQLite CRUD Example')),
+      appBar: AppBar(
+        title: Text('SQLite CRUD with Images & Search'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.brightness_6),
+            onPressed: widget.toggleTheme,
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -83,17 +135,49 @@ class _HomeScreenState extends State<HomeScreen> {
               keyboardType: TextInputType.number,
             ),
             SizedBox(height: 10),
-            ElevatedButton(onPressed: _addRecord, child: Text('Add Record')),
+            ElevatedButton(
+              onPressed: _pickImage,
+              child: Text("Pick Image"),
+            ),
+            if (_imageBase64 != null)
+              Image.memory(
+                base64Decode(_imageBase64!),
+                height: 100,
+                width: 100,
+              ),
+            SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _addRecord,
+              child: Text('Add Record'),
+            ),
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Search by Name',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) => setState(() {}),
+            ),
             Expanded(
               child: ListView.builder(
-                itemCount: _records.length,
+                itemCount: _filteredRecords().length,
                 itemBuilder: (context, index) {
-                  return ListTile(
-                    title: Text(_records[index]['name']),
-                    subtitle: Text('Age: ${_records[index]['age']}'),
-                    trailing: IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteRecord(_records[index]['_id']),
+                  final record = _filteredRecords()[index];
+                  return Card(
+                    child: ListTile(
+                      leading: record['image'] != null
+                          ? Image.memory(
+                              base64Decode(record['image']),
+                              width: 50,
+                              height: 50,
+                            )
+                          : Icon(Icons.person),
+                      title: Text(record['name']),
+                      subtitle: Text('Age: ${record['age']}'),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _deleteRecord(record['_id']),
+                      ),
                     ),
                   );
                 },
